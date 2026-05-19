@@ -1,0 +1,28 @@
+[package]
+name = "liteflags-rs"
+version = "0.1.7"
+edition = "2021"
+description = "A lightweight feature flag evaluation library with rule-based targeting, percentage rollouts, and experiment windows"
+license = "MIT"
+repository = "https://github.com/user/liteflags-rs"
+authors = ["Md Riyadh <riyadh.sharif@grabtaxi.com>", "Jia Long Loh <jialong.loh@grabtaxi.com>"]
+keywords = ["feature-flags", "feature-toggle", "experimentation", "rollout"]
+categories = ["development-tools"]
+readme = "README.md"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yml = "0.0.10"
+dashmap = { version = "6.1", features = ["serde"] }
+rhai = { version = "1.21", features = ["sync"] }
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
+versions = "6.3"
+murmur3 = "0.5"
+regex = "1.0"
+tokio = { version = "1.46", features = ["full"] }
+tracing = "0.1"
+
+[dev-dependencies]
+tempfile = "3.0"

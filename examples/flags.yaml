@@ -1,0 +1,40 @@
+my_app:
+  new_checkout_flow:
+    type: "boolean"
+    default: "off"
+    variations:
+      on: true
+      off: false
+    rules:
+      - query: 'region == "us"'
+        percentage:
+          on: 50
+          off: 50
+
+  results_per_page:
+    type: "number"
+    default: "twenty"
+    variations:
+      ten: 10
+      twenty: 20
+      fifty: 50
+    rules:
+      - query: 'platform == "desktop"'
+        percentage:
+          fifty: 100
+          twenty: 0
+          ten: 0
+
+  banner_text:
+    type: "string"
+    default: "none"
+    variations:
+      none: ""
+      maintenance: "Scheduled maintenance tonight at 11 PM UTC."
+      welcome: "Welcome back!"
+    rules:
+      - query: 'returning_user == true'
+        percentage:
+          welcome: 100
+          maintenance: 0
+          none: 0
