@@ -163,4 +163,4 @@ Flags can now omit the `default` field. When no default is specified and no rule
 
 
 ## Maintainer
-The package is maintained by [Md Sharif](https://github.com/riyadhctg) and [Jialong Loh](https://github.com/jlloh)
+The package is maintained by [Md Riyadh](https://github.com/riyadhctg) and [Jialong Loh](https://github.com/jlloh)
