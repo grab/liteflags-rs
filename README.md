@@ -1,93 +1,166 @@
-# liteflags-rs
+# Liteflags-rs
 
+A lightweight Rust library for feature flag evaluation. It comes with a default flag loader for YAML type. Flag loading is decoupled and custom source (e.g., Flag config stored in JSON file, Database) can be used and then supplied to library's FlagStore.
 
+## Features
 
-## Getting started
+- **Multiple flag types**: boolean, string, number
+- **Rule-based evaluation**: Using Rhai expressions for complex conditions
+- **Percentage rollouts**: Gradual feature releases
+- **Experiment windows**: Time-bounded experiments
+- **Namespaces**: Organize flags by context
+- **Real-time updates**: Hot-reload flag configurations
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+## Quick Start
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+### 1. Add to Cargo.toml
 
-## Add your files
-
-* [Create](https://docs.gitlab.com/user/project/repository/web_editor/#create-a-file) or [upload](https://docs.gitlab.com/user/project/repository/web_editor/#upload-a-file) files
-* [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
-
+```toml
+[dependencies]
+liteflags-rs = "0.1.1"
 ```
-cd existing_repo
-git remote add origin https://gitlab.myteksi.net/trust/rust/helper_libs/liteflags-rs.git
-git branch -M main
-git push -uf origin main
+
+### 2. Create flag configuration (YAML)
+
+```yaml
+my_namespace:
+  my_feature:
+    type: bool
+    variations:
+      enabled: true
+      disabled: false
+    default: disabled
+    rules:
+      - query: 'premium == true && region == "US"'
+        percentage:
+          enabled: 100
+          disabled: 0
 ```
 
-## Integrate with your tools
+### 3. Basic usage
 
-* [Set up project integrations](https://gitlab.myteksi.net/trust/rust/helper_libs/liteflags-rs/-/settings/integrations)
+```rust
+use liteflags-rs::{FlagStore, FlagEvaluator, FlagEvalEngine};
+use std::collections::HashMap;
+use serde_json::json;
 
-## Collaborate with your team
+// Load flags from YAML
+let flags = liteflags-rs::flag_loaders::yaml::load_flags("flags.yaml")?;
 
-* [Invite team members and collaborators](https://docs.gitlab.com/user/project/members/)
-* [Create a new merge request](https://docs.gitlab.com/user/project/merge_requests/creating_merge_requests/)
-* [Automatically close issues from merge requests](https://docs.gitlab.com/user/project/issues/managing_issues/#closing-issues-automatically)
-* [Enable merge request approvals](https://docs.gitlab.com/user/project/merge_requests/approvals/)
-* [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+// Create store and evaluator
+let store = FlagStore::new(flags);
+let engine = FlagEvalEngine::new();
 
-## Test and Deploy
+// Evaluate flags
+let request = liteflags-rs::dto::EvalRequest {
+    namespace: "my_namespace".to_string(),
+    flags: vec!["my_feature".to_string()],
+    data: HashMap::from([
+        ("premium".to_string(), json!(true)),
+        ("region".to_string(), json!("US")),
+    ]),
+    include_reason: true,
+    rollout_target_key: Some("user-123".to_string()), // For percentage-based rollouts
+};
 
-Use the built-in continuous integration in GitLab.
+let result = FlagEvaluator::evaluate_flags(&store, request, &engine)?;
 
-* [Get started with GitLab CI/CD](https://docs.gitlab.com/ci/quick_start/)
-* [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/user/application_security/sast/)
-* [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/topics/autodevops/requirements/)
-* [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/user/clusters/agent/)
-* [Set up protected environments](https://docs.gitlab.com/ci/environments/protected_environments/)
+// Access the result
+println!("{:?}", result.0["my_feature"].value); // true
+println!("{:?}", result.0["my_feature"].reason); // Some("RULE_MATCH")
+```
 
-***
+### 4. Using Custom Functions (Advanced)
 
-# Editing this README
+Liteflags-rs supports custom functions for semantic versioning comparisons:
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+```rust
+use liteflags-rs::{FlagStore, FlagEvaluator, create_enhanced_engine};
+use std::collections::HashMap;
+use serde_json::json;
 
-## Suggestions for a good README
+// Create enhanced engine with custom functions
+let engine = create_enhanced_engine()?;
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+// Now you can use advanced rules like:
+let request = liteflags-rs::dto::EvalRequest {
+    namespace: "my_namespace".to_string(),
+    flags: vec!["advanced_feature".to_string()],
+    data: HashMap::from([
+        ("app_version".to_string(), json!("2.1.0")),
+    ]),
+    include_reason: true,
+    rollout_target_key: Some("user-123".to_string()),
+};
 
-## Name
-Choose a self-explaining name for your project.
+let result = FlagEvaluator::evaluate_flags(&store, request, &engine)?;
+```
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+#### Available Custom Functions
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+**Semantic Version Function:**
+- `semver(version1, operator, version2)` - Compare versions with operator
+  - Supported operators: `>`, `>=`, `<`, `<=`, `==`, `!=`
+  - Example: `semver(app_version, ">=", "2.0.0")`
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+#### Advanced Rule Examples
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+```yaml
+my_namespace:
+  version_feature:
+    type: bool
+    variations:
+      enabled: true
+      disabled: false
+    default: disabled
+    rules:
+      # Enable for app version >= 2.0.0
+      - query: 'semver(app_version, ">=", "2.0.0")'
+        percentage:
+          enabled: 100
+```
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+## Percentage Rollouts
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+The `rollout_target_key` field is used for deterministic percentage-based rollouts. This key (typically a user ID or entity ID) is hashed to consistently assign users to the same variant.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+**Without rollout_target_key:**
+- Rules with percentage distribution are **skipped**
+- Falls back to the default value
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+**With rollout_target_key:**
+- Rules with percentage distribution are evaluated
+- User is consistently assigned to the same variant based on their key
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+## Development
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+### With Nix (Recommended)
+```bash
+cd liteflags-rs
+nix develop       # Enter development environment  
+cargo test        # Run tests (16 tests)
+cargo build       # Build library
+cargo doc --open  # Generate documentation
+```
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+### Without Nix
+```bash
+cargo test        # Run tests
+cargo build       # Build library
+```
 
-## License
-For open source projects, say how it is licensed.
+## YAML Configuration
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Flag definitions support:
+- `type`: `bool`, `string`, `number`
+- `variations`: Map of variant names to values
+- `default`: Default variant name (optional in v0.1.1+)
+- `rules`: List of conditional rules with percentage rollouts
+- `experiment`: Optional time window for experiments
+
+### Optional Defaults (v0.1.1+)
+Flags can now omit the `default` field. When no default is specified and no rules match, the flag is excluded from evaluation results.
+
+
+## Maintainer
+The package is [maintained](https://github.com/riyadhctg) by Md Sharif and [Jialong Loh](https://github.com/jlloh)
