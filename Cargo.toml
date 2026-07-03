@@ -1,10 +1,10 @@
 [package]
 name = "liteflags-rs"
-version = "0.1.7"
+version = "0.1.8"
 edition = "2021"
 description = "A lightweight feature flag evaluation library with rule-based targeting, percentage rollouts, and experiment windows"
 license = "MIT"
-repository = "https://github.com/user/liteflags-rs"
+repository = "https://github.com/grab/liteflags-rs"
 authors = ["Md Riyadh <riyadh.sharif@grabtaxi.com>", "Jia Long Loh <jialong.loh@grabtaxi.com>"]
 keywords = ["feature-flags", "feature-toggle", "experimentation", "rollout"]
 categories = ["development-tools"]
