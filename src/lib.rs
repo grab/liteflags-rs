@@ -9,7 +9,7 @@ pub mod engine_builder;
 pub use flag_store::FlagStore;
 pub use flag_evaluator::FlagEvaluator;
 pub use engine_builder::{FlagEvalEngine, FlagEvalEngineBuilder};
-pub use dto::OrderedEvalResponse;
+pub use dto::{OrderedEvalResponse, EvalMetadata, RuleError};
 pub use custom_functions::semver_compare_checked;
 
 // Convenience function for creating an engine with all custom functions
@@ -862,5 +862,109 @@ mod tests {
 
         flags.insert("test_namespace".to_string(), dto::Flags(namespace_flags));
         dto::NamespaceFlagsMap(flags)
+    }
+
+    #[test]
+    fn test_metadata_on_rule_match() {
+        let flags = create_test_flags();
+        let store = FlagStore::new(flags);
+        let engine = FlagEvalEngine::new();
+
+        let request = dto::EvalRequest {
+            namespace: "test_namespace".to_string(),
+            flags: vec!["test_flag".to_string()],
+            data: HashMap::from([("premium".to_string(), json!(true))]),
+            include_reason: true,
+            rollout_target_key: Some("user-123".to_string()),
+        };
+
+        let result = FlagEvaluator::evaluate_flags(&store, request, &engine).unwrap();
+        let meta = &result.0["test_flag"].metadata;
+        assert_eq!(meta.variation_key, Some("enabled".to_string()));
+        assert_eq!(meta.matched_rule_index, Some(0));
+        assert!(meta.rule_errors.is_empty());
+    }
+
+    #[test]
+    fn test_metadata_on_default_fallback() {
+        let flags = create_test_flags();
+        let store = FlagStore::new(flags);
+        let engine = FlagEvalEngine::new();
+
+        let request = dto::EvalRequest {
+            namespace: "test_namespace".to_string(),
+            flags: vec!["test_flag".to_string()],
+            data: HashMap::from([("premium".to_string(), json!(false))]),
+            include_reason: true,
+            rollout_target_key: Some("user-123".to_string()),
+        };
+
+        let result = FlagEvaluator::evaluate_flags(&store, request, &engine).unwrap();
+        let meta = &result.0["test_flag"].metadata;
+        assert_eq!(meta.variation_key, Some("disabled".to_string()));
+        assert_eq!(meta.matched_rule_index, None);
+        assert!(meta.rule_errors.is_empty());
+    }
+
+    #[test]
+    fn test_metadata_captures_rule_errors() {
+        let flags = DashMap::new();
+        let namespace_flags = DashMap::new();
+
+        namespace_flags.insert("bad_rule_flag".to_string(), dto::FlagDefinition {
+            flag_type: "boolean".to_string(),
+            variations: HashMap::from([
+                ("on".to_string(), json!(true)),
+                ("off".to_string(), json!(false)),
+            ]),
+            default: Some("off".to_string()),
+            rules: vec![
+                dto::Rule {
+                    query: "undefined_var > 5".to_string(),
+                    percentage: BTreeMap::from([("on".to_string(), 100)]),
+                },
+            ],
+            experiment: None,
+        });
+
+        flags.insert("test_namespace".to_string(), dto::Flags(namespace_flags));
+        let store = FlagStore::new(dto::NamespaceFlagsMap(flags));
+        let engine = FlagEvalEngine::new();
+
+        let request = dto::EvalRequest {
+            namespace: "test_namespace".to_string(),
+            flags: vec!["bad_rule_flag".to_string()],
+            data: HashMap::new(),
+            include_reason: true,
+            rollout_target_key: Some("user-123".to_string()),
+        };
+
+        let result = FlagEvaluator::evaluate_flags(&store, request, &engine).unwrap();
+        let meta = &result.0["bad_rule_flag"].metadata;
+        assert_eq!(meta.rule_errors.len(), 1);
+        assert_eq!(meta.rule_errors[0].rule_index, 0);
+        assert!(!meta.rule_errors[0].error.is_empty());
+        // Should fall through to default
+        assert_eq!(meta.variation_key, Some("off".to_string()));
+    }
+
+    #[test]
+    fn test_metadata_on_experiment_window() {
+        let flags = create_experiment_flags(false, false); // expired
+        let store = FlagStore::new(flags);
+        let engine = FlagEvalEngine::new();
+
+        let request = dto::EvalRequest {
+            namespace: "test_namespace".to_string(),
+            flags: vec!["experiment_flag".to_string()],
+            data: HashMap::from([("entity_id".to_string(), json!("user-123"))]),
+            include_reason: true,
+            rollout_target_key: Some("user-123".to_string()),
+        };
+
+        let result = FlagEvaluator::evaluate_flags(&store, request, &engine).unwrap();
+        let meta = &result.0["experiment_flag"].metadata;
+        assert_eq!(meta.variation_key, Some("disabled".to_string()));
+        assert_eq!(meta.matched_rule_index, None);
     }
 } 

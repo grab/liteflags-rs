@@ -51,11 +51,26 @@ pub struct AllEvalRequest {
     pub rollout_target_key: Option<String>,
 }
 
+#[derive(Debug, Serialize, Clone, Default)]
+pub struct EvalMetadata {
+    pub variation_key: Option<String>,
+    pub matched_rule_index: Option<usize>,
+    pub rule_errors: Vec<RuleError>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct RuleError {
+    pub rule_index: usize,
+    pub error: String,
+}
+
 #[derive(Serialize, Debug)]
 pub struct FlagResponse {
     pub value: JsonValue,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    #[serde(skip)]
+    pub metadata: EvalMetadata,
 }
 
 #[derive(Serialize, Debug)]
