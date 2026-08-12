@@ -55,6 +55,7 @@ pub struct AllEvalRequest {
 pub struct EvalMetadata {
     pub variation_key: Option<String>,
     pub matched_rule_index: Option<usize>,
+    pub reason: Option<String>,
     pub rule_errors: Vec<RuleError>,
 }
 
@@ -76,13 +77,35 @@ pub struct FlagResponse {
 #[derive(Serialize, Debug)]
 pub struct EvalResponse(pub HashMap<String, FlagResponse>);
 
+impl EvalResponse {
+    pub fn metadata(&self, flag: &str) -> Option<&EvalMetadata> {
+        self.0.get(flag).map(|r| &r.metadata)
+    }
+}
+
 // BTreeMap-based response for deterministic ordering (signature support)
 #[derive(Serialize, Debug)]
 pub struct OrderedEvalResponse(pub BTreeMap<String, FlagResponse>);
 
+impl OrderedEvalResponse {
+    pub fn metadata(&self, flag: &str) -> Option<&EvalMetadata> {
+        self.0.get(flag).map(|r| &r.metadata)
+    }
+}
+
 // Flat BTreeMap-based response with just flag name -> value (no reason)
 #[derive(Serialize, Debug)]
-pub struct OrderedEvalResponseFlat(pub BTreeMap<String, JsonValue>);
+pub struct OrderedEvalResponseFlat(
+    pub BTreeMap<String, JsonValue>,
+    #[serde(skip)]
+    pub BTreeMap<String, EvalMetadata>,
+);
+
+impl OrderedEvalResponseFlat {
+    pub fn metadata(&self, flag: &str) -> Option<&EvalMetadata> {
+        self.1.get(flag)
+    }
+}
 
 #[derive(Debug)]
 pub enum FlagEvalReason {

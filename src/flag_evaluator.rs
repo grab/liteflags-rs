@@ -135,20 +135,22 @@ impl FlagEvaluator {
 
         let context = Self::convert_context(&request.data);
         let mut results = BTreeMap::new();
+        let mut metadata_map = BTreeMap::new();
         let rollout_target_key = request.rollout_target_key.as_deref();
 
         for flag_entry in namespace_flags.0.iter() {
             let flag_name = flag_entry.key();
             let flag = flag_entry.value();
-            let (result, _metadata) = Self::evaluate_flag(flag, &context, rollout_target_key, engine);
+            let (result, metadata) = Self::evaluate_flag(flag, &context, rollout_target_key, engine);
             if let Some((value, _reason)) = result {
                 results.insert(flag_name.clone(), value);
+                metadata_map.insert(flag_name.clone(), metadata);
             } else {
                 debug!("Flag '{}' has no default and no rules matched - excluding from response", flag_name);
             }
         }
 
-        Ok(OrderedEvalResponseFlat(results))
+        Ok(OrderedEvalResponseFlat(results, metadata_map))
     }
 
     /// Convert JSON context to Rhai Dynamic context for eval by Rhai engine
@@ -224,6 +226,7 @@ impl FlagEvaluator {
                 debug!("Outside experiment window. Checking for default.");
                 if let Some(default_key) = &flag.default {
                     metadata.variation_key = Some(default_key.clone());
+                    metadata.reason = Some(FlagEvalReason::ExperimentWindow.into());
                     let result = flag.variations.get(default_key).map(|v| {
                         (v.clone(), FlagEvalReason::ExperimentWindow.into())
                     });
@@ -272,6 +275,7 @@ impl FlagEvaluator {
                 debug!("Selected variation: {:?}", val);
                 metadata.matched_rule_index = Some(rule_index);
                 metadata.variation_key = Some(variation_key);
+                metadata.reason = Some(FlagEvalReason::RuleMatch.into());
                 return (Some((val, FlagEvalReason::RuleMatch.into())), metadata);
             } else {
                 debug!("Percentage selection returned None, continuing to next rule");
@@ -283,6 +287,7 @@ impl FlagEvaluator {
         debug!("No rule matched or no targeting key available. Checking for default...");
         if let Some(default_key) = &flag.default {
             metadata.variation_key = Some(default_key.clone());
+            metadata.reason = Some(FlagEvalReason::Default.into());
             let result = flag.variations.get(default_key).map(|v| {
                 (v.clone(), FlagEvalReason::Default.into())
             });
