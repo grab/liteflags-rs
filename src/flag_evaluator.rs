@@ -30,12 +30,14 @@ impl FlagEvaluator {
         for flag_name in request.flags.iter() {
             if let Some(flag_entry) = namespace_flags.0.get(flag_name) {
                 let flag = flag_entry.value();
-                if let Some((value, reason)) = Self::evaluate_flag(flag, &context, rollout_target_key, engine) {
+                let (result, metadata) = Self::evaluate_flag(flag, &context, rollout_target_key, engine);
+                if let Some((value, reason)) = result {
                     results.insert(
                         flag_name.to_string(),
-                        FlagResponse { 
-                            value, 
+                        FlagResponse {
+                            value,
                             reason: if include_reason { Some(reason) } else { None },
+                            metadata,
                         },
                     );
                 } else {
@@ -66,13 +68,15 @@ impl FlagEvaluator {
 
         for flag_entry in namespace_flags.0.iter() {
             let flag_name = flag_entry.key();
-            let flag = flag_entry.value(); 
-            if let Some((value, reason)) = Self::evaluate_flag(flag, &context, rollout_target_key, engine) {
+            let flag = flag_entry.value();
+            let (result, metadata) = Self::evaluate_flag(flag, &context, rollout_target_key, engine);
+            if let Some((value, reason)) = result {
                 results.insert(
                     flag_name.clone(),
-                    FlagResponse { 
-                        value, 
+                    FlagResponse {
+                        value,
                         reason: if include_reason { Some(reason) } else { None },
+                        metadata,
                     },
                 );
             } else {
@@ -100,13 +104,15 @@ impl FlagEvaluator {
 
         for flag_entry in namespace_flags.0.iter() {
             let flag_name = flag_entry.key();
-            let flag = flag_entry.value(); 
-            if let Some((value, reason)) = Self::evaluate_flag(flag, &context, rollout_target_key, engine) {
+            let flag = flag_entry.value();
+            let (result, metadata) = Self::evaluate_flag(flag, &context, rollout_target_key, engine);
+            if let Some((value, reason)) = result {
                 results.insert(
                     flag_name.clone(),
-                    FlagResponse { 
-                        value, 
+                    FlagResponse {
+                        value,
                         reason: if include_reason { Some(reason) } else { None },
+                        metadata,
                     },
                 );
             } else {
@@ -133,8 +139,9 @@ impl FlagEvaluator {
 
         for flag_entry in namespace_flags.0.iter() {
             let flag_name = flag_entry.key();
-            let flag = flag_entry.value(); 
-            if let Some((value, _reason)) = Self::evaluate_flag(flag, &context, rollout_target_key, engine) {
+            let flag = flag_entry.value();
+            let (result, _metadata) = Self::evaluate_flag(flag, &context, rollout_target_key, engine);
+            if let Some((value, _reason)) = result {
                 results.insert(flag_name.clone(), value);
             } else {
                 debug!("Flag '{}' has no default and no rules matched - excluding from response", flag_name);
@@ -185,7 +192,9 @@ impl FlagEvaluator {
         context: &HashMap<String, Dynamic>,
         rollout_target_key: Option<&str>,
         engine: &FlagEvalEngine,
-    ) -> Option<(JsonValue, String)> {
+    ) -> (Option<(JsonValue, String)>, EvalMetadata) {
+        let mut metadata = EvalMetadata::default();
+
         debug!("\nEvaluating flag...");
         debug!("Full context: {:#?}", context);
         debug!(
@@ -197,28 +206,38 @@ impl FlagEvaluator {
         // if the data is outside the window, then use default without any further eval
         if let Some(exp) = &flag.experiment {
             let now = Utc::now();
-            let start = DateTime::parse_from_rfc3339(&exp.start)
-                .ok()?
-                .with_timezone(&Utc);
-            let end = DateTime::parse_from_rfc3339(&exp.end)
-                .ok()?
-                .with_timezone(&Utc);
+            let start = match DateTime::parse_from_rfc3339(&exp.start) {
+                Ok(dt) => dt.with_timezone(&Utc),
+                Err(e) => {
+                    metadata.rule_errors.push(RuleError { rule_index: usize::MAX, error: format!("invalid experiment start: {e}") });
+                    return (None, metadata);
+                }
+            };
+            let end = match DateTime::parse_from_rfc3339(&exp.end) {
+                Ok(dt) => dt.with_timezone(&Utc),
+                Err(e) => {
+                    metadata.rule_errors.push(RuleError { rule_index: usize::MAX, error: format!("invalid experiment end: {e}") });
+                    return (None, metadata);
+                }
+            };
             if now < start || now > end {
                 debug!("Outside experiment window. Checking for default.");
                 if let Some(default_key) = &flag.default {
-                    return flag.variations.get(default_key).map(|v| {
+                    metadata.variation_key = Some(default_key.clone());
+                    let result = flag.variations.get(default_key).map(|v| {
                         (v.clone(), FlagEvalReason::ExperimentWindow.into())
                     });
+                    return (result, metadata);
                 } else {
                     debug!("No default specified and outside experiment window. Returning None.");
-                    return None;
+                    return (None, metadata);
                 }
             }
         }
 
         // Priority#2 - if no experiment is defined or the data is within the window, then check if the flag matches a rule
         // Rules are evaluated in order, so the first rule that matches is used
-        for rule in &flag.rules {
+        for (rule_index, rule) in flag.rules.iter().enumerate() {
             let mut scope = Scope::new();
             for (k, v) in context {
                 scope.push(k.clone(), v.clone());
@@ -232,23 +251,28 @@ impl FlagEvaluator {
                 Ok(false) => continue,
                 Err(e) => {
                     debug!("Error evaluating rule '{}': {}", rule.query, e);
+                    metadata.rule_errors.push(RuleError {
+                        rule_index,
+                        error: e.to_string(),
+                    });
                     continue;
                 }
-                
             }
 
             let Some(key_str) = rollout_target_key else {
                 debug!("No rollout_target_key provided, skipping percentage rule");
                 continue;
             };
-            if let Some(val) = Self::select_by_percentage(
+            if let Some((val, variation_key)) = Self::select_by_percentage(
                 &flag.variations,
                 &rule.percentage,
                 key_str,
                 &flag.default,
             ) {
                 debug!("Selected variation: {:?}", val);
-                return Some((val, FlagEvalReason::RuleMatch.into()));
+                metadata.matched_rule_index = Some(rule_index);
+                metadata.variation_key = Some(variation_key);
+                return (Some((val, FlagEvalReason::RuleMatch.into())), metadata);
             } else {
                 debug!("Percentage selection returned None, continuing to next rule");
                 continue;
@@ -258,12 +282,14 @@ impl FlagEvaluator {
         // Priority#3 - return the default variation if none of the above conditions are met
         debug!("No rule matched or no targeting key available. Checking for default...");
         if let Some(default_key) = &flag.default {
-            flag.variations.get(default_key).map(|v| {
+            metadata.variation_key = Some(default_key.clone());
+            let result = flag.variations.get(default_key).map(|v| {
                 (v.clone(), FlagEvalReason::Default.into())
-            })
+            });
+            (result, metadata)
         } else {
             debug!("No default specified and no rules matched. Returning None.");
-            None
+            (None, metadata)
         }
     }
 
@@ -273,7 +299,7 @@ impl FlagEvaluator {
         dist: &BTreeMap<String, u8>,
         key: &str,
         default: &Option<String>,
-    ) -> Option<JsonValue> {
+    ) -> Option<(JsonValue, String)> {
         // Use MurmurHash for excellent uniform distribution in bucketing
         let hash = murmur3_32(&mut key.as_bytes(), 0).unwrap_or(0);
         let bucket = (hash % 100) as u8;
@@ -284,9 +310,9 @@ impl FlagEvaluator {
             cumulative += percentage;
             if bucket < cumulative {
                 if let Some(value) = variations.get(variant) {
-                    return Some(value.clone());
+                    return Some((value.clone(), variant.clone()));
                 } else if let Some(default_key) = default {
-                    return variations.get(default_key).cloned();
+                    return variations.get(default_key).map(|v| (v.clone(), default_key.clone()));
                 } else {
                     return None;
                 }
@@ -295,7 +321,7 @@ impl FlagEvaluator {
 
         // If no percentage bucket matched, return default if available
         if let Some(default_key) = default {
-            variations.get(default_key).cloned()
+            variations.get(default_key).map(|v| (v.clone(), default_key.clone()))
         } else {
             None
         }
