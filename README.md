@@ -17,7 +17,7 @@ A lightweight Rust library for feature flag evaluation. It comes with a default 
 
 ```toml
 [dependencies]
-liteflags-rs = "0.1.1"
+liteflags-rs = "0.1.9"
 ```
 
 ### 2. Create flag configuration (YAML)
@@ -68,6 +68,12 @@ let result = FlagEvaluator::evaluate_flags(&store, request, &engine)?;
 // Access the result
 println!("{:?}", result.0["my_feature"].value); // true
 println!("{:?}", result.0["my_feature"].reason); // Some("RULE_MATCH")
+
+// Access evaluation metadata (works on all response types)
+let meta = result.metadata("my_feature").unwrap();
+println!("{:?}", meta.variation_key);       // Some("enabled")
+println!("{:?}", meta.matched_rule_index);  // Some(0)
+println!("{:?}", meta.reason);              // Some("RULE_MATCH")
 ```
 
 ### 4. Using Custom Functions (Advanced)

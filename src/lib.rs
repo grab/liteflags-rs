@@ -967,4 +967,24 @@ mod tests {
         assert_eq!(meta.variation_key, Some("disabled".to_string()));
         assert_eq!(meta.matched_rule_index, None);
     }
-} 
+
+    #[test]
+    fn test_metadata_on_ordered_flat() {
+        let flags = create_test_flags();
+        let store = FlagStore::new(flags);
+        let engine = FlagEvalEngine::new();
+
+        let request = dto::AllEvalRequest {
+            namespace: "test_namespace".to_string(),
+            data: HashMap::from([("premium".to_string(), json!(true))]),
+            include_reason: false,
+            rollout_target_key: Some("user-123".to_string()),
+        };
+
+        let result = FlagEvaluator::evaluate_all_flags_ordered_flat(&store, request, &engine).unwrap();
+        let meta = &result.1["test_flag"];
+        assert_eq!(meta.variation_key, Some("enabled".to_string()));
+        assert_eq!(meta.matched_rule_index, Some(0));
+        assert!(meta.rule_errors.is_empty());
+    }
+}
