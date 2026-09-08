@@ -1,7 +1,7 @@
 use crate::dto::NamespaceFlagsMap;
 use anyhow::{Context, Result};
 use serde_json::Value as JsonValue;
-use serde_yml::Value as YamlValue;
+use yaml_serde::Value as YamlValue;
 use std::fs;
 use std::time::{Duration, SystemTime};
 use tracing::{info, warn};
@@ -12,7 +12,7 @@ pub fn load_flags<P: AsRef<str>>(path: P) -> Result<NamespaceFlagsMap> {
     let yaml_str = fs::read_to_string(path_str)
         .with_context(|| format!("Failed to read YAML file: {}", path_str))?;
     
-    let yaml_value: YamlValue = serde_yml::from_str(&yaml_str)
+    let yaml_value: YamlValue = yaml_serde::from_str(&yaml_str)
         .with_context(|| format!("Failed to parse YAML file: {}", path_str))?;
     
     let json_value = yaml_to_json(yaml_value);
