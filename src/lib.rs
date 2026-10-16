@@ -33,7 +33,7 @@ mod tests {
         
         namespace_flags.insert("test_flag".to_string(), dto::FlagDefinition {
             flag_type: "boolean".to_string(),
-            variations: HashMap::from([
+            variations: BTreeMap::from([
                 ("enabled".to_string(), json!(true)),
                 ("disabled".to_string(), json!(false)),
             ]),
@@ -60,7 +60,7 @@ mod tests {
         
         namespace_flags.insert("rollout_flag".to_string(), dto::FlagDefinition {
             flag_type: "string".to_string(),
-            variations: HashMap::from([
+            variations: BTreeMap::from([
                 ("variant_a".to_string(), json!("A")),
                 ("variant_b".to_string(), json!("B")),
                 ("variant_c".to_string(), json!("C")),
@@ -104,7 +104,7 @@ mod tests {
         
         namespace_flags.insert("experiment_flag".to_string(), dto::FlagDefinition {
             flag_type: "boolean".to_string(),
-            variations: HashMap::from([
+            variations: BTreeMap::from([
                 ("enabled".to_string(), json!(true)),
                 ("disabled".to_string(), json!(false)),
             ]),
@@ -202,7 +202,7 @@ mod tests {
         // Create a flag with no default
         namespace_flags.insert("no_default_flag".to_string(), dto::FlagDefinition {
             flag_type: "string".to_string(),
-            variations: HashMap::from([
+            variations: BTreeMap::from([
                 ("option_a".to_string(), json!("A")),
                 ("option_b".to_string(), json!("B")),
             ]),
@@ -247,7 +247,7 @@ mod tests {
         // Create a flag with no default
         namespace_flags.insert("no_default_flag".to_string(), dto::FlagDefinition {
             flag_type: "string".to_string(),
-            variations: HashMap::from([
+            variations: BTreeMap::from([
                 ("option_a".to_string(), json!("A")),
                 ("option_b".to_string(), json!("B")),
             ]),
@@ -427,7 +427,7 @@ mod tests {
             
             namespace_flags.insert("rollout_flag".to_string(), dto::FlagDefinition {
                 flag_type: "string".to_string(),
-                variations: HashMap::from([
+                variations: BTreeMap::from([
                     ("variant_a".to_string(), json!("A")),
                     ("variant_b".to_string(), json!("B")),
                     ("variant_c".to_string(), json!("C")),
@@ -455,7 +455,7 @@ mod tests {
             
             namespace_flags.insert("rollout_flag".to_string(), dto::FlagDefinition {
                 flag_type: "string".to_string(),
-                variations: HashMap::from([
+                variations: BTreeMap::from([
                     ("variant_c".to_string(), json!("C")),
                     ("variant_a".to_string(), json!("A")),
                     ("variant_b".to_string(), json!("B")),
@@ -732,7 +732,7 @@ mod tests {
         
         namespace_flags.insert("flag_a".to_string(), dto::FlagDefinition {
             flag_type: "boolean".to_string(),
-            variations: HashMap::from([
+            variations: BTreeMap::from([
                 ("enabled".to_string(), json!(true)),
                 ("disabled".to_string(), json!(false)),
             ]),
@@ -743,7 +743,7 @@ mod tests {
         
         namespace_flags.insert("flag_b".to_string(), dto::FlagDefinition {
             flag_type: "string".to_string(),
-            variations: HashMap::from([
+            variations: BTreeMap::from([
                 ("value1".to_string(), json!("hello")),
                 ("value2".to_string(), json!("world")),
             ]),
@@ -754,7 +754,7 @@ mod tests {
         
         namespace_flags.insert("flag_c".to_string(), dto::FlagDefinition {
             flag_type: "number".to_string(),
-            variations: HashMap::from([
+            variations: BTreeMap::from([
                 ("low".to_string(), json!(10)),
                 ("high".to_string(), json!(100)),
             ]),
@@ -843,7 +843,7 @@ mod tests {
         
         namespace_flags.insert("version_flag".to_string(), dto::FlagDefinition {
             flag_type: "boolean".to_string(),
-            variations: HashMap::from([
+            variations: BTreeMap::from([
                 ("enabled".to_string(), json!(true)),
                 ("disabled".to_string(), json!(false)),
             ]),
@@ -913,7 +913,7 @@ mod tests {
 
         namespace_flags.insert("bad_rule_flag".to_string(), dto::FlagDefinition {
             flag_type: "boolean".to_string(),
-            variations: HashMap::from([
+            variations: BTreeMap::from([
                 ("on".to_string(), json!(true)),
                 ("off".to_string(), json!(false)),
             ]),
@@ -986,5 +986,15 @@ mod tests {
         assert_eq!(meta.variation_key, Some("enabled".to_string()));
         assert_eq!(meta.matched_rule_index, Some(0));
         assert!(meta.rule_errors.is_empty());
+    }
+
+    #[test]
+    fn test_flag_definition_serialization_is_deterministic() {
+        let yaml = "type: string\nvariations:\n  zeta: \"z\"\n  alpha: \"a\"\n  mid: \"m\"\n  beta: \"b\"\ndefault: alpha\nrules: []\n";
+        let expected = r#"{"type":"string","variations":{"alpha":"a","beta":"b","mid":"m","zeta":"z"},"default":"alpha","rules":[]}"#;
+        for _ in 0..20 {
+            let flag: dto::FlagDefinition = yaml_serde::from_str(yaml).unwrap();
+            assert_eq!(serde_json::to_string(&flag).unwrap(), expected);
+        }
     }
 }
