@@ -300,7 +300,7 @@ impl FlagEvaluator {
 
     /// Select a variation based on percentage distribution and entity key
     fn select_by_percentage(
-        variations: &HashMap<String, JsonValue>,
+        variations: &BTreeMap<String, JsonValue>,
         dist: &BTreeMap<String, u8>,
         key: &str,
         default: &Option<String>,

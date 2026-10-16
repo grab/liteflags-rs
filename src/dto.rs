@@ -13,9 +13,10 @@ pub struct NamespaceFlagsMap(pub DashMap<String, Flags>);
 pub struct FlagDefinition {
     #[serde(rename = "type")]
     pub flag_type: String,
-    pub variations: HashMap<String, JsonValue>,
+    pub variations: BTreeMap<String, JsonValue>,
     pub default: Option<String>,
     pub rules: Vec<Rule>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub experiment: Option<ExperimentWindow>,
 }
 
